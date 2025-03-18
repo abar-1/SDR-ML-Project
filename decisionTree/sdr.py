@@ -12,39 +12,78 @@ from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.metrics import confusion_matrix, accuracy_score, classification_report
 import matplotlib.pyplot as plt
+import numpy as np
 
-# Load the data
-train_df = pd.read_csv("/train.csv")
-test_df = pd.read_csv("/test.csv")
+def generate_noisy_signals(df):    
+    sps = 4  # Samples per symbol
+    noise_prob = 0.05  # Probability of impulse noise occurring
+    impulse_amplitude = 5.0  # Amplitude of impulse noise
 
-# Convert the 'label' column to categorical (factor)
-train_df['label'] = train_df['label'].astype('category')
-test_df['label'] = test_df['label'].astype('category')
+    # Get symbols from df
+    symbols = df['real'] + 1j*df['imaginary']
 
-# Separate features (X) and target (y)
-X_train = train_df.drop('label', axis=1)
-y_train = train_df['label']
-X_test = test_df.drop('label', axis=1)
-y_test = test_df['label']
+    # Apply a simple pulse shaping filter (rectangular pulse)
+    pulse = np.ones(sps)
+    transmitted_signal = np.convolve(symbols, pulse, mode='same')
 
-# Create and train the Decision Tree model
-model = DecisionTreeClassifier()
-model.fit(X_train, y_train)
+    # Generate impulse noise
+    impulse_noise = np.zeros_like(transmitted_signal, dtype=complex)
+    impulse_indices = np.random.rand(len(transmitted_signal)) < noise_prob
+    impulse_noise[impulse_indices] = (np.random.randn(np.sum(impulse_indices)) +
+                                     1j * np.random.randn(np.sum(impulse_indices))) * impulse_amplitude
 
-import matplotlib.pyplot as plt
-from sklearn.tree import plot_tree
+    # Add impulse noise to the transmitted signal
+    noisy_signal = transmitted_signal + impulse_noise
 
-# Assuming you have your model, X_train, and y_train already defined
-# and model is already fit.
+    # Create DataFrame with noisy signals and labels
+    df1 = pd.DataFrame({
+        'real': noisy_signal.real,
+        'imaginary': noisy_signal.imag,
+        'label': df['label']
+    })
+    
+    # Save to CSV - use to_csv() not to_df()
+    df1.to_csv("noisy_signals.csv", mode='a', header=not pd.io.common.file_exists("noisy_signals.csv"), index=False)
+    print("Noisy signals have been appended to noisy_signals.csv")
 
-plt.figure(figsize=(20, 10))
-plot_tree(model, filled=True, feature_names=X_train.columns, class_names=[str(c) for c in model.classes_])
-plt.show()
+if __name__ == "__main__":
+    # Load the data
+    train_df = pd.read_csv("train-2.csv")  
+    test_df = pd.read_csv("test.csv")      
 
-# Make predictions on the test set
-predictions = model.predict(X_test)
+    # Convert the 'label' column to categorical (factor)
+    train_df['label'] = train_df['label'].astype('category')
+    test_df['label'] = test_df['label'].astype('category')
 
-# Calculate and print the confusion matrix
-cm = confusion_matrix(y_test, predictions)
-print("Confusion Matrix:")
-print(cm)
+    #Iterate through train_df and test_df and generate noisy signals
+    generate_noisy_signals(train_df)
+    generate_noisy_signals(test_df)
+
+    # Separate features (X) and target (y)
+    X_train = train_df.drop('label', axis=1)
+    y_train = train_df['label']
+    X_test = test_df.drop('label', axis=1)
+    y_test = test_df['label']
+
+    # Create and train the Decision Tree model
+    model = DecisionTreeClassifier()
+    model.fit(X_train, y_train)
+
+    # Plot the decision tree
+    plt.figure(figsize=(20, 10))
+    plot_tree(model, filled=True, feature_names=X_train.columns, class_names=[str(c) for c in model.classes_])
+    plt.show()
+
+    # Make predictions on the test set
+    predictions = model.predict(X_test)
+
+    # Calculate and print the confusion matrix
+    cm = confusion_matrix(y_test, predictions)
+    print("Confusion Matrix:")
+    print(cm)
+
+    # Calculate and print the accuracy score
+    accuracy = accuracy_score(y_test, predictions)
+    print("Accuracy:")
+    print(accuracy)
+    
